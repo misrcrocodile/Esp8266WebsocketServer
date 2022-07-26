@@ -40,32 +40,31 @@ function clientAuth(msg) {
 const ESP8266_AUTH = "0DF94E58B2524498BAA43F8B01FC6A7C";
 const ADMIN_USERNAME = "admin";
 const ADMIN_PASSWORD = "password";
-const approvingList = {};
 const ESPApprovedList = {
-  TVRemote1: {
-    name: "",
-    sessionId: "",
-    createdDatetime: new Date(),
-    connection: {},
-  },
-  TVRemote2: {
-    name: "",
-    sessionId: "",
-    createdDatetime: new Date(),
-    connection: {},
-  },
-  Projector1: {
-    name: "",
-    sessionId: "",
-    createdDatetime: new Date(),
-    connection: {},
-  },
-  Projector2: {
-    name: "",
-    sessionId: "",
-    createdDatetime: new Date(),
-    connection: {},
-  },
+  // TVRemote1: {
+  //   name: "",
+  //   sessionId: "",
+  //   createdDatetime: new Date(),
+  //   connection: {},
+  // },
+  // TVRemote2: {
+  //   name: "",
+  //   sessionId: "",
+  //   createdDatetime: new Date(),
+  //   connection: {},
+  // },
+  // Projector1: {
+  //   name: "",
+  //   sessionId: "",
+  //   createdDatetime: new Date(),
+  //   connection: {},
+  // },
+  // Projector2: {
+  //   name: "",
+  //   sessionId: "",
+  //   createdDatetime: new Date(),
+  //   connection: {},
+  // },
 };
 
 const temporatorySessionList = {
