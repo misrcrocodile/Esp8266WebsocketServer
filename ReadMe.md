@@ -108,3 +108,7 @@ To https://git.heroku.com/xxxxxxxxxxxxxxx.git
 - windowsにNode.jsをインストールする - https://qiita.com/Masayuki-M/items/840a997a824e18f576d8
 - Getting Started on Heroku with Node.js - https://devcenter.heroku.com/articles/getting-started-with-nodejs#set-up
 - Heroku初心者がHello, Herokuをしてみる - https://qiita.com/Arashi/items/b2f2e01259238235e187
+
+##5. Toto
+- 接続完了したRequestを自動的に削除する
+- ゲストセッションを作成する

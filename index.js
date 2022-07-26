@@ -1,30 +1,90 @@
 #!/usr/bin/env node
 
-var WebSocketServer = require("websocket").server;
-var http = require("http");
-var port = process.env.PORT || 8011;
+const WebSocketServer = require("websocket").server;
+const { webcrypto } = require("crypto");
+const http = require("http");
+const port = process.env.PORT || 8011;
+const { v4: uuidv4 } = require("uuid");
+const moment = require("moment");
 
+function log(...args) {
+  console.log(moment().format("YYYY/MM/DD HH:mm:ss -"), ...args);
+}
+function getUUID() {
+  return uuidv4().split("-").join("");
+}
 // Create server
-var server = http.createServer(function (request, response) {
-  console.log(new Date() + " Received request for " + request.url);
+const server = http.createServer(function (request, response) {
+  log("Received request for " + request.url);
   response.writeHead(404);
   response.end();
 });
 
 //  Setup listening
 server.listen(port, function () {
-  console.log(new Date() + " Server is listening on port " + port);
+  log("Server is listening on port " + port);
 });
 
 wsServer = new WebSocketServer({
   httpServer: server,
-  // You should not use autoAcceptConnections for production
-  // applications, as it defeats all standard cross-origin protection
-  // facilities built into the protocol and the browser.  You should
-  // *always* verify the connection's origin and decide whether or not
-  // to accept it.
-  // autoAcceptConnections: false
 });
+
+function clientAuth(msg) {
+  let clientConnect = clientList[msg.name];
+  if (clientConnect && clientConnect.sessionId === msg.sessionId) {
+    return true;
+  }
+  return false;
+}
+
+const ESP8266_AUTH = "0DF94E58B2524498BAA43F8B01FC6A7C";
+const ADMIN_USERNAME = "admin";
+const ADMIN_PASSWORD = "password";
+const approvingList = {};
+const ESPApprovedList = {
+  TVRemote1: {
+    name: "",
+    sessionId: "",
+    createdDatetime: new Date(),
+    connection: {},
+  },
+  TVRemote2: {
+    name: "",
+    sessionId: "",
+    createdDatetime: new Date(),
+    connection: {},
+  },
+  Projector1: {
+    name: "",
+    sessionId: "",
+    createdDatetime: new Date(),
+    connection: {},
+  },
+  Projector2: {
+    name: "",
+    sessionId: "",
+    createdDatetime: new Date(),
+    connection: {},
+  },
+};
+
+const temporatorySessionList = {
+  sessionId: {
+    createdDatetime: new Date(),
+    expiredDatetime: new Date(),
+  },
+};
+
+const webClientApprovedList = {
+  deviceId: {
+    sessionId: "",
+    isTemporatorySession: false,
+    connection: {},
+    expiredDatetime: new Date(),
+    createdDatetime: new Date(),
+    listDevice: [],
+  },
+};
 
 const TYPE_ESP = "esp8266";
 const TYPE_WEB = "webclient";
@@ -32,18 +92,14 @@ const TYPE_PI = "piclient";
 
 function originIsAllowed(req) {
   // put logic here to detect whether the specified origin is allowed.
-  var approveList = [TYPE_ESP, TYPE_WEB, TYPE_PI];
-  var protocol = req.requestedProtocols[0];
+  const approveList = [TYPE_ESP, TYPE_WEB];
+  const protocol = req.requestedProtocols[0];
   return approveList.includes(protocol);
 }
-var espConn = null;
-var webConn = null;
-var piConn = null;
 
+// Initial Connect
 wsServer.on("request", function (request) {
-  var requestType = request.requestedProtocols[0];
-  requestType = requestType || request.httpRequest.headers.via;
-  request.requestedProtocols = [requestType];
+  const requestType = request.requestedProtocols[0];
   if (!originIsAllowed(request)) {
     request.reject();
     console.log(
@@ -55,44 +111,217 @@ wsServer.on("request", function (request) {
     );
     return;
   }
-  var connection = request.accept(requestType, null);
-  assignConnection(connection, requestType);
-  console.log(new Date() + requestType + " Connection accepted.");
+
+  const connection = request.accept(requestType, null);
+  log("Request is established: " + requestType);
 
   connection.on("message", function (message) {
     handleMessage(connection, message, requestType);
   });
 
-  connection.on("close", function (_reasonCode, _description) {
+  connection.on("close", function (reasonCode, description) {
     handleClose(connection, requestType);
   });
 });
 
-function assignConnection(conn, type) {
+function handleMessage(conn, msg, type) {
   switch (type) {
     case TYPE_ESP:
-      espConn = conn;
+      handleESPMessage(conn, msg);
       break;
     case TYPE_WEB:
-      webConn = conn;
-      break;
-    case TYPE_PI:
-      piConn = conn;
+      handleWebMessage(conn, msg);
       break;
   }
 }
 
-function handleMessage(_conn, mess, type) {
-  switch (type) {
-    case TYPE_ESP:
-      break;
-    case TYPE_WEB:
-      if (espConn) {
-        espConn.sendUTF(mess.utf8Data);
-      }
-      break;
+function handleESPMessage(conn, msg) {
+  const msgContent = msg.utf8Data.split(":");
+  // Auth
+  if (msgContent.length > 0 && msgContent[0] === "auth") {
+    if (msgContent[2] === ESP8266_AUTH) {
+      ESPApprovedList[msgContent[1]] = {
+        connection: conn,
+        name: msgContent[1],
+        sessionId: ESP8266_AUTH,
+      };
+      conn.deviceId = msgContent[1];
+      conn.sendUTF("PermissionAccepted");
+    } else {
+      conn.sendUTF("PermissionDenied");
+      conn.close();
+    }
   }
-  console.log("Received Message: " + type + ": " + mess.utf8Data);
+}
+
+function handleWebMessage(conn, msg) {
+  const msgObj = JSON.parse(msg.utf8Data);
+  // client auth
+  if (msgObj.type === "login") {
+    handleWebLogin(conn, msgObj);
+  }
+
+  if (msgObj.type === "sendIRSignal") {
+    handleIrSignalRequest(conn, msgObj);
+  }
+
+  if (msgObj.type === "getTemporatoryConnection") {
+    handleTemporatoryConnection(conn, msgObj);
+  }
+}
+function handleIrSignalRequest(conn, msg) {
+  if (!isValidWebClientAuth(msg)) {
+    // do nothing
+  }
+
+  try {
+    var espConn = ESPApprovedList[msg.espDeviceName];
+    if (espConn.connection && msg.value) {
+      espConn.connection.sendUTF(msg.value);
+    }
+  } catch (e) {}
+}
+
+function getListDevice() {
+  let listDevice = [];
+  for (let item in ESPApprovedList) {
+    listDevice.push(item);
+  }
+  listDevice.sort();
+  return listDevice;
+}
+
+function isValidWebClientAuth(msg) {
+  if (!msg.deviceId && !msg.sessionId) {
+    return false;
+  }
+  const approvedConn = webClientApprovedList[msg.deviceId];
+  if (
+    approvedConn &&
+    approvedConn.sessionId === msg.sessionId &&
+    approvedConn.listDevice.includes(msg.espDeviceName)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function handleTemporatoryConnection(conn, msg) {
+  if (!isValidWebClientAuth(msg)) {
+    // do nothing
+  }
+  try {
+    console.log("handle temporatory session", msg.listDevice);
+    var randomSessionId = getUUID();
+    temporatorySessionList[randomSessionId] = {
+      createdDatetime: new Date(),
+      expiredDatetime: initExpireDate(),
+      listDevice: msg.listDevice,
+    };
+
+    conn.sendUTF(
+      JSON.stringify({
+        type: "getTemporatoryConnection",
+        temporatorySession: randomSessionId,
+      })
+    );
+  } catch (e) {}
+}
+
+function handleWebLogin(conn, msg) {
+  // handle temporatory session
+  if (msg.isTemporatorySession) {
+    console.log("handle temporatory session", msg.listDevice);
+    const session = temporatorySessionList[msg.sessionId];
+    if (session && session.expiredDatetime > Date.now()) {
+      // push connection info into stack
+      webClientApprovedList[msg.deviceId] = {
+        sessionId: msg.sessionId,
+        connection: conn,
+        expiredDatetime: session.expiredDatetime,
+        listDevice: session.listDevice,
+        isTemporatorySession: true,
+      };
+
+      conn.sendUTF(
+        JSON.stringify({
+          type: "login",
+          result: "accepted",
+          sessionId: msg.sessionId,
+          deviceId: msg.deviceId,
+          expiredDatetime: session.expiredDatetime,
+          listDevice: session.listDevice,
+        })
+      );
+
+      conn.deviceId = msg.deviceId;
+
+      return;
+    }
+  }
+
+  // handle login by deviceId, session Id
+  if (msg.deviceId && msg.sessionId) {
+    const approvedConn = webClientApprovedList[msg.deviceId];
+    if (approvedConn && approvedConn.expiredDatetime > Date.now()) {
+      conn.sendUTF(
+        JSON.stringify({
+          type: "login",
+          result: "accepted",
+          sessionId: msg.sessionId,
+          username: approvedConn.username,
+          deviceId: msg.deviceId,
+          expiredDatetime: initExpireDate(),
+          listDevice: getListDevice(),
+        })
+      );
+      conn.deviceId = msg.deviceId;
+    } else {
+      sendRejectMsg(conn);
+    }
+    return;
+  }
+
+  // handle login by username, password
+  if (msg.username === ADMIN_USERNAME && msg.password === ADMIN_PASSWORD) {
+    log("Request is accepted.");
+    // accept connect
+    const uuid = getUUID();
+    const expiredDate = initExpireDate();
+    conn.sendUTF(
+      JSON.stringify({
+        type: "login",
+        result: "accepted",
+        sessionId: uuid,
+        username: msg.username,
+        deviceId: msg.deviceId,
+        expiredDatetime: expiredDate,
+        listDevice: getListDevice(),
+      })
+    );
+
+    // push connection info into stack
+    webClientApprovedList[msg.deviceId] = {
+      username: msg.username,
+      sessionId: uuid,
+      connection: conn,
+      expiredDatetime: expiredDate,
+      listDevice: getListDevice(),
+    };
+    conn.deviceId = msg.deviceId;
+  } else {
+    log("Request is rejected.");
+    sendRejectMsg(conn);
+  }
+}
+
+function sendRejectMsg(conn) {
+  conn.sendUTF(
+    JSON.stringify({
+      type: "login",
+      result: "rejected",
+    })
+  );
 }
 
 function handleClose(conn, type) {
@@ -104,5 +333,25 @@ function handleClose(conn, type) {
       webConn = null;
       break;
   }
-  console.log(new Date() + " Peer " + conn.remoteAddress + " disconnected.");
+  log("device named " + conn.deviceName + " is disconnected.");
+}
+
+function initExpireDate() {
+  return Date.now() + 60 * 60 * 1000;
+}
+
+/**
+ * Creating UUID by setting length
+ * @param {integer} length
+ * @returns
+ */
+function makeID(length) {
+  var result = "";
+  var characters =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  var charactersLength = characters.length;
+  for (var i = 0; i < length; i++) {
+    result += characters.charAt(Math.floor(Math.random() * charactersLength));
+  }
+  return result;
 }

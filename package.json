@@ -20,6 +20,8 @@
   "license": "LGPLv2",
   "dependencies": {
     "express": "^4.16.1",
+    "moment": "^2.29.1",
+    "uuid": "^8.3.2",
     "websocket": "^1.0.18"
   }
 }
