@@ -333,24 +333,9 @@ function handleClose(conn, type) {
       break;
   }
   log("device named " + conn.deviceName + " is disconnected.");
+  delete ESPApprovedList[conn.deviceName];
 }
 
 function initExpireDate() {
   return Date.now() + 60 * 60 * 1000;
-}
-
-/**
- * Creating UUID by setting length
- * @param {integer} length
- * @returns
- */
-function makeID(length) {
-  var result = "";
-  var characters =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  var charactersLength = characters.length;
-  for (var i = 0; i < length; i++) {
-    result += characters.charAt(Math.floor(Math.random() * charactersLength));
-  }
-  return result;
 }
