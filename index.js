@@ -67,7 +67,7 @@ const ESPApprovedList = {
   // },
 };
 
-const temporatorySessionList = {
+const temporarySessionList = {
   sessionId: {
     createdDatetime: new Date(),
     expiredDatetime: new Date(),
@@ -77,7 +77,7 @@ const temporatorySessionList = {
 const webClientApprovedList = {
   deviceId: {
     sessionId: "",
-    isTemporatorySession: false,
+    isTemporarySession: false,
     connection: {},
     expiredDatetime: new Date(),
     createdDatetime: new Date(),
@@ -164,8 +164,8 @@ function handleWebMessage(conn, msg) {
     handleIrSignalRequest(conn, msgObj);
   }
 
-  if (msgObj.type === "getTemporatoryConnection") {
-    handleTemporatoryConnection(conn, msgObj);
+  if (msgObj.type === "getTemporaryConnection") {
+    handleTemporaryConnection(conn, msgObj);
   }
 }
 function handleIrSignalRequest(conn, msg) {
@@ -205,14 +205,14 @@ function isValidWebClientAuth(msg) {
   return false;
 }
 
-function handleTemporatoryConnection(conn, msg) {
+function handleTemporaryConnection(conn, msg) {
   if (!isValidWebClientAuth(msg)) {
     // do nothing
   }
   try {
-    console.log("handle temporatory session", msg.listDevice);
+    console.log("handle temporary session", msg.listDevice);
     var randomSessionId = getUUID();
-    temporatorySessionList[randomSessionId] = {
+    temporarySessionList[randomSessionId] = {
       createdDatetime: new Date(),
       expiredDatetime: initExpireDate(),
       listDevice: msg.listDevice,
@@ -220,18 +220,18 @@ function handleTemporatoryConnection(conn, msg) {
 
     conn.sendUTF(
       JSON.stringify({
-        type: "getTemporatoryConnection",
-        temporatorySession: randomSessionId,
+        type: "getTemporaryConnection",
+        temporarySession: randomSessionId,
       })
     );
   } catch (e) {}
 }
 
 function handleWebLogin(conn, msg) {
-  // handle temporatory session
-  if (msg.isTemporatorySession) {
-    console.log("handle temporatory session", msg.listDevice);
-    const session = temporatorySessionList[msg.sessionId];
+  // handle temporary session
+  if (msg.isTemporarySession) {
+    console.log("handle temporary session", msg.listDevice);
+    const session = temporarySessionList[msg.sessionId];
     if (session && session.expiredDatetime > Date.now()) {
       // push connection info into stack
       webClientApprovedList[msg.deviceId] = {
@@ -239,7 +239,7 @@ function handleWebLogin(conn, msg) {
         connection: conn,
         expiredDatetime: session.expiredDatetime,
         listDevice: session.listDevice,
-        isTemporatorySession: true,
+        isTemporarySession: true,
       };
 
       conn.sendUTF(
