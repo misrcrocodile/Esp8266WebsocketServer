@@ -332,8 +332,8 @@ function handleClose(conn, type) {
       webConn = null;
       break;
   }
-  log("device named " + conn.deviceName + " is disconnected.");
-  delete ESPApprovedList[conn.deviceName];
+  log("device named " + conn.deviceId + " is disconnected.");
+  delete ESPApprovedList[conn.deviceId];
 }
 
 function initExpireDate() {
